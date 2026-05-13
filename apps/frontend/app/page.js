@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 
 const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
 
@@ -29,11 +29,21 @@ export default function Home() {
   const [metadata, setMetadata] = useState(null);
   const [exports, setExports] = useState([]);
   const [uploading, setUploading] = useState(false);
-  const [selectedTasks, setSelectedTasks] = useState(['transcribe', 'separate', 'midi']);
   const [lastSegmentText, setLastSegmentText] = useState('');
+  const [backendStatus, setBackendStatus] = useState('checking');
 
   const eventSourceRef = useRef(null);
   const fileInputRef = useRef(null);
+
+  useEffect(() => {
+    fetch(`${API}/health`, { signal: AbortSignal.timeout(5000) })
+      .then(res => res.json())
+      .then(data => {
+        if (data.status === 'ok') setBackendStatus('online');
+        else setBackendStatus('offline');
+      })
+      .catch(() => setBackendStatus('offline'));
+  }, []);
 
   const connectSSE = useCallback((id) => {
     if (eventSourceRef.current) {
@@ -83,7 +93,7 @@ export default function Home() {
     };
 
     es.onerror = () => {
-      console.warn('SSE connection error, retrying...');
+      console.warn('SSE connection error');
     };
   }, []);
 
@@ -105,6 +115,12 @@ export default function Home() {
   async function handleUpload(event) {
     const file = event.target.files[0];
     if (!file) return;
+
+    if (backendStatus !== 'online') {
+      setError('Backend no disponible. Ejecuta: docker compose -f docker-compose.full.yml up --build');
+      setStage('failed');
+      return;
+    }
 
     setUploading(true);
     setError(null);
@@ -141,7 +157,7 @@ export default function Home() {
 
       connectSSE(data.jobId);
     } catch (err) {
-      setError(err.message);
+      setError('No se pudo conectar al backend. Asegurate de que Docker esté corriendo.');
       setStage('failed');
       setUploading(false);
     }
@@ -215,6 +231,36 @@ export default function Home() {
       </div>
 
       <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
+        marginBottom: 24,
+        padding: '10px 16px',
+        background: backendStatus === 'online' ? '#0a1a0a' : backendStatus === 'checking' ? '#1a1a0a' : '#1a0a0a',
+        border: `1px solid ${backendStatus === 'online' ? '#22c55e33' : backendStatus === 'checking' ? '#f59e0b33' : '#ef444433'}`,
+        borderRadius: 8
+      }}>
+        <span style={{
+          width: 8,
+          height: 8,
+          borderRadius: '50%',
+          background: backendStatus === 'online' ? '#22c55e' : backendStatus === 'checking' ? '#f59e0b' : '#ef4444',
+          display: 'inline-block'
+        }} />
+        <span style={{
+          fontSize: 13,
+          color: backendStatus === 'online' ? '#22c55e' : backendStatus === 'checking' ? '#f59e0b' : '#ef4444'
+        }}>
+          {backendStatus === 'online' && 'Backend conectado'}
+          {backendStatus === 'checking' && 'Verificando conexión al backend...'}
+          {backendStatus === 'offline' && `Backend offline — Ejecuta Docker localmente para procesar audio`}
+        </span>
+        <span style={{ fontSize: 11, color: '#555', marginLeft: 'auto' }}>
+          {API}
+        </span>
+      </div>
+
+      <div style={{
         background: '#111',
         borderRadius: 12,
         padding: 24,
@@ -224,16 +270,17 @@ export default function Home() {
         <h2 style={{ fontSize: 16, marginBottom: 16, color: '#ccc' }}>Subir Audio</h2>
 
         <div
-          onClick={() => fileInputRef.current?.click()}
+          onClick={() => backendStatus === 'online' ? fileInputRef.current?.click() : null}
           style={{
             border: '2px dashed #333',
             borderRadius: 8,
             padding: '40px 20px',
             textAlign: 'center',
-            cursor: 'pointer',
-            transition: 'border-color 0.2s'
+            cursor: backendStatus === 'online' ? 'pointer' : 'not-allowed',
+            transition: 'border-color 0.2s',
+            opacity: backendStatus === 'online' ? 1 : 0.5
           }}
-          onMouseOver={e => e.currentTarget.style.borderColor = '#555'}
+          onMouseOver={e => backendStatus === 'online' && (e.currentTarget.style.borderColor = '#555')}
           onMouseOut={e => e.currentTarget.style.borderColor = '#333'}
         >
           <p style={{ fontSize: 18, marginBottom: 8 }}>
@@ -252,7 +299,45 @@ export default function Home() {
         </div>
       </div>
 
-      {(stage !== 'idle' || progress > 0) && (
+      {backendStatus === 'offline' && stage === 'idle' && (
+        <div style={{
+          background: '#111',
+          borderRadius: 12,
+          padding: 24,
+          marginBottom: 24,
+          border: '1px solid #222'
+        }}>
+          <h2 style={{ fontSize: 16, marginBottom: 12, color: '#ccc' }}>Para comenzar</h2>
+          <p style={{ fontSize: 13, color: '#888', marginBottom: 12 }}>
+            El backend necesita Docker para ejecutar whisper-cli, demucs y basic-pitch localmente.
+          </p>
+          <pre style={{
+            background: '#0a0a0a',
+            padding: 16,
+            borderRadius: 8,
+            fontSize: 13,
+            color: '#22c55e',
+            overflowX: 'auto'
+          }}>
+{`git clone https://github.com/edmac154/audio-transcriber.git
+cd audio-transcriber
+docker compose -f docker-compose.full.yml up --build`}
+          </pre>
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+            gap: 12,
+            marginTop: 16
+          }}>
+            <FeatureCard title="Transcripción" desc="Whisper.cpp local con timestamps" icon="T" color="#22c55e" />
+            <FeatureCard title="Stem Separation" desc="Demucs: vocals, drums, bass, other" icon="S" color="#ec4899" />
+            <FeatureCard title="MIDI Export" desc="Basic-pitch melody extraction" icon="M" color="#f97316" />
+            <FeatureCard title="DOCX Export" desc="Documento con timestamps formateados" icon="D" color="#3b82f6" />
+          </div>
+        </div>
+      )}
+
+      {stage !== 'idle' && (
         <div style={{
           background: '#111',
           borderRadius: 12,
@@ -329,9 +414,26 @@ export default function Home() {
           borderRadius: 12,
           padding: 16,
           marginBottom: 24,
-          color: '#ef4444'
+          color: '#ef4444',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center'
         }}>
-          <strong>Error:</strong> {error}
+          <span><strong>Error:</strong> {error}</span>
+          <button
+            onClick={() => { setError(null); setStage('idle'); }}
+            style={{
+              background: 'transparent',
+              border: '1px solid #ef4444',
+              color: '#ef4444',
+              borderRadius: 6,
+              padding: '4px 12px',
+              cursor: 'pointer',
+              fontSize: 12
+            }}
+          >
+            Cerrar
+          </button>
         </div>
       )}
 
@@ -448,5 +550,34 @@ function ActionButton({ label, onClick, color }) {
     >
       {label}
     </button>
+  );
+}
+
+function FeatureCard({ title, desc, icon, color }) {
+  return (
+    <div style={{
+      background: '#0a0a0a',
+      borderRadius: 8,
+      padding: 16,
+      border: '1px solid #222'
+    }}>
+      <div style={{
+        width: 32,
+        height: 32,
+        borderRadius: 6,
+        background: `${color}22`,
+        color,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontWeight: 700,
+        fontSize: 14,
+        marginBottom: 8
+      }}>
+        {icon}
+      </div>
+      <div style={{ fontSize: 14, color: '#e0e0e0', fontWeight: 600, marginBottom: 4 }}>{title}</div>
+      <div style={{ fontSize: 12, color: '#666' }}>{desc}</div>
+    </div>
   );
 }
