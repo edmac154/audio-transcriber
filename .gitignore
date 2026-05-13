@@ -1,0 +1,15 @@
+node_modules/
+.next/
+.env
+.env.local
+storage/uploads/*
+storage/normalized/*
+storage/transcripts/*
+storage/exports/*
+storage/waveforms/*
+storage/stems/*
+!storage/.gitkeep
+*.log
+.DS_Store
+dist/
+build/

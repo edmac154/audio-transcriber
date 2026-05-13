@@ -1,0 +1,12 @@
+{
+  "name": "demucs-worker",
+  "private": true,
+  "scripts": {
+    "dev": "node src/index.js",
+    "start": "node src/index.js"
+  },
+  "dependencies": {
+    "bullmq": "^5.7.0",
+    "ioredis": "^5.4.1"
+  }
+}

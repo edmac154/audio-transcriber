@@ -1,0 +1,74 @@
+services:
+
+  frontend:
+    build:
+      context: ./apps/frontend
+    ports:
+      - "3000:3000"
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:4000
+    depends_on:
+      - backend
+    volumes:
+      - ./apps/frontend:/app
+      - /app/node_modules
+      - /app/.next
+
+  backend:
+    build:
+      context: ./apps/backend
+    ports:
+      - "4000:4000"
+    environment:
+      REDIS_URL: redis://redis:6379
+      STORAGE_BASE: /app/storage
+    volumes:
+      - ./apps/backend:/app
+      - /app/node_modules
+      - ./storage:/app/storage
+    depends_on:
+      - redis
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  whisper-worker:
+    build:
+      context: ./workers/whisper-worker
+    environment:
+      REDIS_URL: redis://redis:6379
+      STORAGE_BASE: /app/storage
+    volumes:
+      - ./workers/whisper-worker:/app
+      - /app/node_modules
+      - ./storage:/app/storage
+    depends_on:
+      - redis
+
+  demucs-worker:
+    build:
+      context: ./workers/demucs-worker
+    environment:
+      REDIS_URL: redis://redis:6379
+      STORAGE_BASE: /app/storage
+    volumes:
+      - ./workers/demucs-worker:/app
+      - /app/node_modules
+      - ./storage:/app/storage
+    depends_on:
+      - redis
+
+  midi-worker:
+    build:
+      context: ./workers/midi-worker
+    environment:
+      REDIS_URL: redis://redis:6379
+      STORAGE_BASE: /app/storage
+    volumes:
+      - ./workers/midi-worker:/app
+      - /app/node_modules
+      - ./storage:/app/storage
+    depends_on:
+      - redis

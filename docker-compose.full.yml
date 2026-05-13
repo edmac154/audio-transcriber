@@ -1,0 +1,97 @@
+services:
+
+  frontend:
+    build:
+      context: ./apps/frontend
+    ports:
+      - "3000:3000"
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:4000
+    depends_on:
+      - backend
+
+  backend:
+    build:
+      context: ./apps/backend
+    ports:
+      - "4000:4000"
+    environment:
+      REDIS_URL: redis://redis:6379
+      DATABASE_URL: postgresql://audiotranscriber:audiotranscriber@postgres:5432/audiotranscriber
+      STORAGE_BASE: /app/storage
+    volumes:
+      - audio-storage:/app/storage
+    depends_on:
+      - redis
+      - postgres
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: audiotranscriber
+      POSTGRES_PASSWORD: audiotranscriber
+      POSTGRES_DB: audiotranscriber
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+
+  whisper-worker:
+    build:
+      context: ./workers/whisper-worker
+    environment:
+      REDIS_URL: redis://redis:6379
+      WHISPER_BIN: whisper-cli
+      WHISPER_MODEL: /app/models/ggml-base.bin
+      STORAGE_BASE: /app/storage
+    volumes:
+      - audio-storage:/app/storage
+    depends_on:
+      - redis
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+
+  demucs-worker:
+    build:
+      context: ./workers/demucs-worker
+    environment:
+      REDIS_URL: redis://redis:6379
+      STORAGE_BASE: /app/storage
+      DEMUCS_MODEL: htdemucs
+    volumes:
+      - audio-storage:/app/storage
+    depends_on:
+      - redis
+    deploy:
+      resources:
+        limits:
+          memory: 8G
+
+  midi-worker:
+    build:
+      context: ./workers/midi-worker
+    environment:
+      REDIS_URL: redis://redis:6379
+      STORAGE_BASE: /app/storage
+    volumes:
+      - audio-storage:/app/storage
+    depends_on:
+      - redis
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+
+volumes:
+  audio-storage:
+  redis-data:
+  pg-data:
